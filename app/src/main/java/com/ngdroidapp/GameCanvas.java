@@ -4,9 +4,11 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 
+import java.util.Random;
 import java.util.Vector;
 
 import istanbul.gamelab.ngdroid.base.BaseCanvas;
+import istanbul.gamelab.ngdroid.core.NgMediaPlayer;
 import istanbul.gamelab.ngdroid.util.Log;
 import istanbul.gamelab.ngdroid.util.Utils;
 
@@ -20,16 +22,24 @@ import istanbul.gamelab.ngdroid.util.Utils;
 public class GameCanvas extends BaseCanvas {
 
     //tileset var
-    private Bitmap tileset, spritesheet, bullet;
+    private Bitmap tileset, spritesheet, bullet, enemy, explosion;
     //end var
 
+    public int sound_explosion;
 
 
-    private int kareno, speedx, speedy, spritexcord, spriteycord, animationo, animationtype, touchx, touchy, speed, bulletoffsetx_temp, bulletoffsety_temp, bulletspeed, bulletx_temp, bullety_temp;
 
-    private Rect tilesrc, tiledst, spritesrc, spritedst, bulletsrc;
+    private NgMediaPlayer sound_background;
 
-    public Vector<Rect>bulletdst2;
+    private boolean enemyexist, exploded, turnbool;
+
+    private int kareno, speedx, speedy, spritexcord, spriteycord, animationo, animationtype, touchx, touchy, speed, bulletoffsetx_temp, bulletoffsety_temp, bulletspeed, bulletx_temp, bullety_temp, explosionframeno;
+
+    private int enemyspeedx, enemyspeedy, enemyx, enemyy, turningpoint;
+    private Random enemyrand;
+    private Rect tilesrc, tiledst, spritesrc, spritedst, bulletsrc, enemysrc, enemydst, explosionsrc, explosiondst;
+
+    public Vector<Rect> bulletdst;
     public Vector<Integer>bulletx2, bullety2, bulletoffsetx2, bulletoffsety2, bulletspeedx2, bulletspeedy2, bulletspeed2;
 
     public GameCanvas(NgApp ngApp) {
@@ -39,7 +49,7 @@ public class GameCanvas extends BaseCanvas {
     public void setup() {
 
 
-        bulletdst2 = new Vector<Rect>();
+        bulletdst = new Vector<Rect>();
         bulletx2 = new Vector<Integer>();
         bullety2 = new Vector<Integer>();
         bulletspeedx2 = new Vector<Integer>();
@@ -56,6 +66,21 @@ public class GameCanvas extends BaseCanvas {
 
         bullet = Utils.loadImage(root, "images/bullet.png");
 
+//region enemy
+        enemy = Utils.loadImage(root, "images/mainship03.png");
+        enemysrc = new Rect();
+        enemydst = new Rect();
+        enemyexist = true;
+
+        enemyspeedx = 10;
+        enemyspeedy = 0;
+        enemyx = getWidthHalf()-128;
+        enemyy = getHeight()-256;
+        turningpoint = getWidth();
+        turnbool = true;
+        enemyrand = new Random();
+//endregion
+
         //get coordinates from tile set
         tilesrc = new Rect();
         spritesrc = new Rect();
@@ -63,7 +88,23 @@ public class GameCanvas extends BaseCanvas {
         bulletsrc = new Rect();
 
 
+        explosion = Utils.loadImage(root, "images/exp2_0.png");
+        explosionsrc = new Rect();
+        explosiondst = new Rect();
+        explosionframeno = 0;
+        exploded = false;
 
+        try {
+            sound_explosion = root.soundManager.load("sounds/se2.wav");
+        } catch(Exception e){
+            e.printStackTrace();
+        }
+
+        sound_background = new NgMediaPlayer(root);
+        sound_background.load("sounds/m2.mp3");
+        sound_background.setVolume(0.8f);
+        sound_background.prepare();
+        sound_background.start();
         //we'll draw dst
         tiledst = new Rect();
         spritedst = new Rect();
@@ -90,11 +131,67 @@ public class GameCanvas extends BaseCanvas {
 
 
 
+
     public void update() {
         tilesrc.set(0,0,64,64);
 
+        if(turnbool){
+            if(enemyspeedx > 0){
+                turningpoint = enemyrand.nextInt(getWidth() -256 - enemyx - 50) + enemyx;
+            }
+            else if(enemyspeedx < 0){
+                turningpoint = enemyrand.nextInt(enemyx);
+            }
+            turnbool = false;
+        }
+        if(enemyspeedx > 0 && enemyx > turningpoint){
+            turnbool = true;
+            enemyspeedx = -enemyspeedx;
+        }
+        else if (enemyspeedx < 0 && enemyx < turningpoint){
+            turnbool = true;
+            enemyspeedx = -enemyspeedx;
+        }
+
+        if(enemyexist){
+        enemysrc.set(0, 0, 64, 64);
+        //enemydst.set(getWidthHalf()-128, getHeight()-256, getWidthHalf()+128, getHeight());
+        enemydst.set(enemyx, enemyy, enemyx+256, enemyy+256);
+        }
+
+        for(int i = 0; i< bulletdst.size(); i++){
+            if(enemydst.contains(bulletdst.elementAt(i))){
+                explosiondst.set(bulletx2.elementAt(i)-64, bullety2.elementAt(i)-64, bulletx2.elementAt(i)+64, bullety2.elementAt(i)+64);
+                bulletx2.removeElementAt(i);
+                bullety2.removeElementAt(i);
+                bulletdst.removeElementAt(i);
+                bulletspeedx2.removeElementAt(i);
+                bulletspeedy2.removeElementAt(i);
+                enemyexist = false;
+                enemydst.set(0, 0, 0, 0);
+                exploded = true;
+                root.soundManager.play(sound_explosion);
+
+            }
+        }
+
+        if(exploded){
+            explosionsrc = getExplosionFrame(explosionframeno);
+            explosionframeno+=2;
+        }
+        if(explosionframeno > 15){
+            explosionframeno = 0;
+            exploded = false;
+        }
         spritexcord += speedx;
         spriteycord += speedy;
+
+        enemyx += enemyspeedx;
+        enemyy += enemyspeedy;
+
+        if(enemyx+256 > getWidth() || enemyx < 0){
+            enemyspeedx = -enemyspeedx;
+        }
 
         /*bulletx_temp += bulletspeedx;
         bullety_temp += bulletspeedy;*/
@@ -109,7 +206,7 @@ public class GameCanvas extends BaseCanvas {
                 bullety2.removeElementAt(i);
                 /*bulletoffsetx2.removeElementAt(i);
                 bulletoffsety2.removeElementAt(i);*/
-                bulletdst2.removeElementAt(i);
+                bulletdst.removeElementAt(i);
                 bulletspeedx2.removeElementAt(i);
                 bulletspeedy2.removeElementAt(i);
             }
@@ -158,7 +255,7 @@ public class GameCanvas extends BaseCanvas {
 
         bulletsrc.set(0, 0, 70, 70);
         for(int i = 0 ; i<bulletx2.size(); i++){
-        bulletdst2.elementAt(i).set(bulletx2.elementAt(i), bullety2.elementAt(i), bulletx2.elementAt(i)+32, bullety2.elementAt(i)+32);
+        bulletdst.elementAt(i).set(bulletx2.elementAt(i), bullety2.elementAt(i), bulletx2.elementAt(i)+32, bullety2.elementAt(i)+32);
         }
     }
 
@@ -175,11 +272,26 @@ public class GameCanvas extends BaseCanvas {
         canvas.drawBitmap(spritesheet, spritesrc, spritedst, null);
 
 
-        for(int i = 0; i<bulletdst2.size(); i++) {
-            canvas.drawBitmap(bullet, bulletsrc, bulletdst2.elementAt(i), null);
+        for(int i = 0; i< bulletdst.size(); i++) {
+            canvas.drawBitmap(bullet, bulletsrc, bulletdst.elementAt(i), null);
+        }
+
+        if(enemyexist){
+        canvas.drawBitmap(enemy, enemysrc, enemydst, null);
+        }
+
+        if(exploded){
+            canvas.drawBitmap(explosion, explosionsrc, explosiondst, null);
         }
     }
 
+
+    public Rect getExplosionFrame(int frameNo){
+        frameNo = 15-frameNo;
+        Rect temp = new Rect();
+        temp.set((frameNo%4)*64, ((frameNo/4)*64), ((frameNo%4) + 1)*64, ((frameNo/4)+1)*64);
+        return temp;
+    }
 
     public void keyPressed(int key) {
 
@@ -283,7 +395,7 @@ public class GameCanvas extends BaseCanvas {
             bulletx_temp = spritexcord + bulletoffsetx_temp;
             bullety_temp = spriteycord + bulletoffsety_temp;
 
-            bulletdst2.add(new Rect(bulletx_temp, bullety_temp, bulletx_temp +32, bullety_temp +32));
+            bulletdst.add(new Rect(bulletx_temp, bullety_temp, bulletx_temp +32, bullety_temp +32));
         }
     }
 
